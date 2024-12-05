@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Object Detection</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+            flex-wrap: wrap;
+        }
+        .container {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 1200px;
+            flex-wrap: wrap;
+        }
+        .left-section, .right-section {
+            flex: 1;
+            min-width: 300px;
+            margin: 10px;
+            padding: 20px;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #007BFF;
+        }
+        input[type="file"], input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #007BFF;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #video-frame {
+            width: 100%;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            background: #e9ecef;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+        @media (max-width: 600px) {
+            .container {
+                flex-direction: column;
+            }
+            button {
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-section">
+            <h1>Object Detection</h1>
+            <form id="uploadForm">
+                <!-- <input type="file" id="video" accept="video/*" required> -->
+                <label for="conversion_factor">Conversion Factor (mm/pixel): </label>
+                <input type="number" id="conversion_factor" step="0.0001" value="1.8889" required>
+                <!-- <button type="submit">Upload Video</button> -->
+            </form>
+
+            <div id="control-buttons">
+                <button id="startCamera">Start Camera</button>
+                <button id="stopCamera" style="display:none;">Stop Camera</button>
+                <button id="startProcessing" style="display:none;">Start Processing</button>
+            </div>
+
+            <div id="video-container">
+                <img id="video-frame" />
+            </div>
+        </div>
+
+        <div class="right-section">
+            <h2>Detected Classes</h2>
+            <ul id="class-list">
+                <!-- Detected classes will be listed here dynamically -->
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const socket = io.connect();
+        const videoFrame = document.getElementById("video-frame");
+        const classList = document.getElementById("class-list");
+        const uploadForm = document.getElementById("uploadForm");
+        const startProcessingButton = document.getElementById("startProcessing");
+        const startCameraButton = document.getElementById("startCamera");
+        const stopCameraButton = document.getElementById("stopCamera");
+
+        function startProcessing() {
+            const videoData = {};  // Gather any necessary data for processing
+            socket.emit('start_processing', videoData);
+        }
+
+        socket.on('processing_started', (data) => {
+            console.log(data.message);
+            // Update UI to indicate processing has started
+        });
+
+        socket.on('error', (data) => {
+            alert(data.error);
+        });
+
+        // Handle Video Upload
+        uploadForm.onsubmit = async (event) => {
+            event.preventDefault();
+            const videoFile = document.getElementById("video").files[0];
+            const formData = new FormData();
+            formData.append("video", videoFile);
+    
+            const response = await fetch('/upload_video', {
+                method: 'POST',
+                body: formData
+            });
+    
+            if (response.ok) {
+                startProcessingButton.style.display = 'block';
+            } else {
+                alert("Failed to upload video.");
+            }
+        };
+    
+        // Start Camera Stream
+        startCameraButton.onclick = () => {
+            socket.emit('start_camera_stream');
+            startCameraButton.style.display = 'none';
+            stopCameraButton.style.display = 'inline-block';
+        };
+    
+        // Stop Camera Stream
+        stopCameraButton.onclick = () => {
+            socket.emit('stop_camera_stream');
+            stopCameraButton.style.display = 'none';
+            startCameraButton.style.display = 'inline-block';
+        };
+    
+        // Start Processing Uploaded Video
+        startProcessingButton.onclick = () => {
+            const conversionFactor = parseFloat(document.getElementById("conversion_factor").value);
+            socket.emit('start_processing', { "conversion_factor": conversionFactor });
+        };
+    
+        // Receive Processed Frame
+        socket.on('frame', (data) => {
+            const blob = new Blob([data.frame], { type: "image/jpeg" });
+            videoFrame.src = URL.createObjectURL(blob);
+            updateClassList(data.measurements);
+        });
+    
+        // Update Detected Classes List
+        function updateClassList(measurements) {
+            classList.innerHTML = "";  // Clear previous data
+    
+            measurements.forEach(item => {
+                const li = document.createElement("li");
+                li.textContent = `${item.class_name}: ${item.top_width_mm.toFixed(2)} mm`;
+                classList.appendChild(li);
+            });
+        }
+    </script>
+</body>
+</html>
