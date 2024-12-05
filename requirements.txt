@@ -1,0 +1,6 @@
+Flask
+Flask-SocketIO
+opencv-python
+numpy
+torch
+ultralytics
